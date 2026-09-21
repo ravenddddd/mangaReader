@@ -869,6 +869,38 @@ async function main() {
     }
   );
 
+  await runSection("a change elsewhere does not restart the wait", async () => {
+    // Held from before anything is drawn, which is when the two questions differ:
+    // with no previous screen to keep, the container is empty while the first one
+    // is on its way — and "empty" and "nothing drawn yet" are not the same thing.
+    dom.holdImages();
+    const { box } = await startReader({ on: true });
+
+    const before = dom.imagesAskedFor();
+    // Stash keeps changing the page while the screen is on its way: its counter is
+    // rewritten, its slides swap, the menu that was just open closes. Any of those
+    // is a DOM change, and each used to be read as "nothing has been drawn".
+    dom.flush();
+    dom.flush();
+    await settle();
+
+    assert.strictEqual(
+      dom.imagesAskedFor() - before,
+      0,
+      "the screen is asked for once, however much the page changes while it loads"
+    );
+
+    dom.settleImages();
+    await settle();
+    assert.deepStrictEqual(
+      drawn(),
+      ["/image/101/image"],
+      "and it goes up when its image is there"
+    );
+
+    stopReader(box);
+  });
+
   await runSection("the offset key re-pairs the gallery", async () => {
     const { box, popover } = await startReader({ galleryId: "8", on: true });
 

@@ -101,6 +101,20 @@ let shownAt = -1;
 let drawGeneration = 0;
 
 /**
+ * The screen whose images are still on their way, or -1 for none.
+ *
+ * `shownAt` says which screen the reader has asked for; whether it is *up* used to
+ * be answered by asking the container how many children it had, and that stopped
+ * being the same question once a screen began to be built off-screen and shown in
+ * one step — during the wait the container is empty while the screen is already
+ * under way. Read as "nothing has been drawn", every DOM change redrew the same
+ * screen, and each redraw reset the wait it was in: a turn that produced a handful
+ * of mutations (Stash's carousel swapping, its counter being rewritten) could go on
+ * resetting the wait it needed to finish. The two questions are now two variables.
+ */
+let awaiting = -1;
+
+/**
  * The offset for the gallery in hand, and which gallery that was.
  *
  * Per gallery, and remembered for it — see the note on OFFSET_KEY. Only one
@@ -287,7 +301,13 @@ function sync(lightbox: Element): void {
     return;
   }
 
-  if (at === shownAt && container?.childElementCount) return;
+  if (
+    at === shownAt &&
+    container &&
+    (container.childElementCount || awaiting === at)
+  ) {
+    return;
+  }
 
   // Only now, with somewhere to draw: inserting the container is what hides the
   // carousel, and a gallery with nothing to show must not be left with a hidden
@@ -397,6 +417,10 @@ function decodedImage(image: HTMLImageElement): Promise<unknown> {
 function draw(screen: MangaReaderScreen, at: number): void {
   if (!container) return;
 
+  // A fresh draw supersedes any wait in flight: whatever was being waited for is
+  // not what is being drawn now. See `awaiting` for what the wait is for.
+  awaiting = -1;
+
   // In reading order: the earlier page first in the DOM, which for a
   // right-to-left book is the right-hand one — the stylesheet reverses them, so
   // the order here stays "as read" and the direction is one CSS rule.
@@ -424,6 +448,11 @@ function draw(screen: MangaReaderScreen, at: number): void {
     if (revealed || mine !== drawGeneration || !container) return;
     revealed = true;
 
+    // The wait is over, and the screen is a screen the container's children can
+    // answer for again — which is what tells a container React has taken away from
+    // one that is merely empty because nothing was drawn yet.
+    if (awaiting === at) awaiting = -1;
+
     container.textContent = "";
     container.classList.toggle(CLASS_SINGLE, screen.pages.length === 1);
     boxes.forEach((box) => {
@@ -441,6 +470,7 @@ function draw(screen: MangaReaderScreen, at: number): void {
   if (images.every((image) => image.complete !== false)) {
     reveal();
   } else {
+    awaiting = at;
     Promise.all(images.map(decodedImage)).then(reveal);
     window.setTimeout(reveal, REVEAL_BUDGET_MS);
   }

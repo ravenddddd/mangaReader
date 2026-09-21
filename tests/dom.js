@@ -171,8 +171,10 @@ function createDom() {
   // the test wants to be slow, then `settleImages()` when the bytes arrive.
   let imagesHeld = false;
   const waitingDecodes = [];
+  let imagesAskedFor = 0;
 
   const imageElement = () => {
+    imagesAskedFor += 1;
     const el = makeElement("img");
     Object.defineProperty(el, "complete", { get: () => !imagesHeld });
     el.decode = () =>
@@ -276,6 +278,11 @@ function createDom() {
     observerCount: () => observers.length,
     makeElement,
     makeEvent,
+    /**
+     * How many `<img>` elements the plugin has made: how a test sees a screen being
+     * drawn again when it should have been left alone.
+     */
+    imagesAskedFor: () => imagesAskedFor,
     /** The images the plugin asks for are not there yet: hold them open. */
     holdImages() {
       imagesHeld = true;
