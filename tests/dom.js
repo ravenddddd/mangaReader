@@ -283,6 +283,18 @@ function createDom() {
      * drawn again when it should have been left alone.
      */
     imagesAskedFor: () => imagesAskedFor,
+    /**
+     * Dispatches an event with a chosen `target` — the element that has focus, as
+     * far as the plugin can tell. `window.dispatchEvent` overwrites the target with
+     * the window, and the plugin's key handler is registered on the window but reads
+     * `event.target` to decide whether the key is the reader's or the focused
+     * field's.
+     */
+    dispatchTo(target, event) {
+      event.target = target;
+      for (const fn of window.listeners[event.type] || []) fn(event);
+      return event;
+    },
     /** The images the plugin asks for are not there yet: hold them open. */
     holdImages() {
       imagesHeld = true;

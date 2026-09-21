@@ -901,6 +901,59 @@ async function main() {
     stopReader(box);
   });
 
+  await runSection(
+    "a focused field does not take the arrows from the reader",
+    async () => {
+      const { box, input } = await startReader({ galleryId: "8", on: true });
+      const sent = [];
+      dom.document.addEventListener("keydown", (event) => sent.push(event.key));
+
+      const keyTo = (target, key) =>
+        dom.dispatchTo(
+          target,
+          dom.makeEvent("keydown", { key, isTrusted: true })
+        );
+
+      // The options menu is open and the focus is on the switch the reader just
+      // clicked — a checkbox. The arrows do nothing to a checkbox (space toggles it),
+      // so a press here is still the reader's. Treating every `<input>` as a field
+      // that owns the arrows meant these went past the reader to Stash's own handler,
+      // a page at a time: "it only happens while the menu is open".
+      box.move(2);
+      dom.flush();
+      sent.length = 0;
+      const onSwitch = keyTo(input, "ArrowRight");
+      assert.strictEqual(
+        onSwitch.defaultPrevented,
+        true,
+        "a press with the switch focused is the reader's"
+      );
+      assert.deepStrictEqual(
+        sent,
+        ["ArrowRight"],
+        "…and it starts a screen-sized move like any other"
+      );
+
+      // A text field is a different matter: the arrows are its own, and the plugin
+      // must not take them from it.
+      const field = dom.makeElement("input");
+      field.type = "text";
+      const inField = keyTo(field, "ArrowRight");
+      assert.strictEqual(
+        inField.defaultPrevented,
+        false,
+        "a text field keeps its own arrow keys"
+      );
+      assert.deepStrictEqual(
+        sent,
+        ["ArrowRight"],
+        "…and nothing is sent for it"
+      );
+
+      stopReader(box);
+    }
+  );
+
   await runSection("the offset key re-pairs the gallery", async () => {
     const { box, popover } = await startReader({ galleryId: "8", on: true });
 

@@ -798,6 +798,51 @@ function setChecked(id: string, checked: boolean): void {
 // ── Keys ───────────────────────────────────────────────────────────
 
 /**
+ * Whether the arrow keys belong to whatever has focus.
+ *
+ * Only things the arrows actually *do* something to: a text field moves its caret,
+ * a range input its handle. This listener is on the window, so without this it
+ * would take the arrows from anything on the page.
+ *
+ * A **checkbox is not one of those** — the arrows do nothing to it; space is what
+ * toggles it — and a checkbox is what this plugin's own switch in the lightbox's
+ * options menu is. Exempting every `<input>` therefore meant that turning the mode
+ * off and on *from that menu* left the focus on the switch, and the reader's next
+ * arrow went straight past the reader to Stash's own handler, one page at a time:
+ * "it only happens while the menu is open, and closing the menu fixes it".
+ *
+ * Written as the list of types that eat arrows rather than the list that does not,
+ * so an input type nobody thought of leaves the arrows to the reader.
+ */
+function arrowsBelongTo(target: HTMLElement | null): boolean {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+
+  const tag = target.tagName;
+  if (tag === "TEXTAREA") return true;
+  if (tag !== "INPUT") return false;
+
+  const type = ((target as HTMLInputElement).type || "text").toLowerCase();
+  return (
+    [
+      "date",
+      "datetime-local",
+      "email",
+      "month",
+      "number",
+      "password",
+      "range",
+      "search",
+      "tel",
+      "text",
+      "time",
+      "url",
+      "week",
+    ].indexOf(type) !== -1
+  );
+}
+
+/**
  * Handles the arrows while the spread view is up, and the offset key.
  *
  * Listens on `window` **in the capture phase**, which is what puts it in front of
@@ -834,17 +879,7 @@ function onKeyDown(event: KeyboardEvent): void {
   // plugin is not going to start.
   if (event.repeat) return;
 
-  // A text field has the arrow keys while it has focus. The lightbox has none of
-  // its own, but this listener is on the window and would take them from anything.
-  const target = event.target as HTMLElement | null;
-  if (
-    target &&
-    (target.tagName === "INPUT" ||
-      target.tagName === "TEXTAREA" ||
-      target.isContentEditable)
-  ) {
-    return;
-  }
+  if (arrowsBelongTo(event.target as HTMLElement | null)) return;
 
   const at = currentIndex(lightbox);
   if (at === null) return;
