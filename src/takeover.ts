@@ -25,6 +25,7 @@
  * case is a reader who has to press a switch again, never a blank screen.
  */
 import { labelFor } from "./i18n";
+import { NR } from "./plugin-api";
 import type { MangaReaderGallery, MangaReaderSettings } from "./plugin-api";
 import {
   readOffset,
@@ -32,7 +33,7 @@ import {
   writeOffset,
   writeSettings,
 } from "./settings";
-import type { MangaReaderScreen } from "./spreads";
+import type { MangaReaderPage, MangaReaderScreen } from "./spreads";
 import { layout, screenAt, stepsToAdjacent } from "./spreads";
 import {
   SELECTOR_DISPLAY,
@@ -89,6 +90,15 @@ const loaded: Map<string, MangaReaderGallery> = new Map();
 /** The gallery being read, and the screen being drawn from it */
 let galleryId: string | null = null;
 let shownAt = -1;
+
+/**
+ * Which draw the screen on the way in belongs to.
+ *
+ * A screen can be waiting for its images while the reader turns again, and the
+ * older draw's reveal must not land on top of the newer one — see draw. A counter
+ * rather than a flag, because the older draw has no way to know what replaced it.
+ */
+let drawGeneration = 0;
 
 /**
  * The offset for the gallery in hand, and which gallery that was.
@@ -328,28 +338,112 @@ function ensureContainer(lightbox: Element): void {
   lightbox.classList.add(CLASS_ACTIVE);
 }
 
-/** Draws one screen, and warms the pages either side of it */
+/**
+ * How long a screen may be held back waiting for its images.
+ *
+ * Waiting is the point — two pages that arrive separately read as a flicker rather
+ * than as a page — but waiting *forever* on one slow image is worse than either.
+ * Past this, whatever has arrived is shown and the rest lands when it lands.
+ */
+const REVEAL_BUDGET_MS = 300;
+
+NR.REVEAL_BUDGET_MS = REVEAL_BUDGET_MS;
+
+/**
+ * The URL to fetch a page from.
+ *
+ * The path is the one this plugin has always built; the query is Stash's own,
+ * lifted from the URL it publishes for the image. That query is a version stamp,
+ * and sharing it is the whole reason for any of this: the server answers
+ * `/image/<id>/image?t=<mtime>` with `private, max-age=31536000, immutable`, and
+ * the same path *without* it with `no-cache`. So a hand-built URL does not merely
+ * miss a version — it throws away the caching Stash's own lightbox has already paid
+ * for. Every page ends up fetched twice, once by each, with nothing making the two
+ * halves of a screen finish together, which is exactly what a reader sees as one
+ * page flicking in before the other.
+ *
+ * The path stays relative rather than using Stash's URL whole: either resolves to
+ * the same resource and so the same cache entry, and a relative one cannot be
+ * broken by a base URL naming a host the browser cannot reach.
+ */
+function pageUrl(page: MangaReaderPage): string {
+  const query = /\?.*$/.exec(page.url || "");
+  return "/image/" + page.id + "/image" + (query ? query[0] : "");
+}
+
+/**
+ * Resolves when the browser can paint this image without a second jolt.
+ *
+ * `decode()` rejects for an image that failed, which is a settle too — a screen
+ * must never be held back by a page that is not coming. A DOM without `decode` has
+ * no loading state to report, so there is nothing to wait for.
+ */
+function decodedImage(image: HTMLImageElement): Promise<unknown> {
+  return typeof image.decode === "function"
+    ? image.decode().catch(() => {})
+    : Promise.resolve();
+}
+
+/**
+ * Draws one screen, and warms the pages either side of it.
+ *
+ * The screen is built **detached** and shown in one step: the two images of a pair
+ * are fetched in parallel and finish at different times, and a screen that appears
+ * in two pieces is the flicker this avoids. Until both are ready — or the budget
+ * runs out — whatever the reader is already looking at stays where it is, which for
+ * a page turn means the page they just left. (On the first screen there is nothing
+ * to keep, so there the wait is a blank.)
+ */
 function draw(screen: MangaReaderScreen, at: number): void {
   if (!container) return;
-
-  container.textContent = "";
-  container.classList.toggle(CLASS_SINGLE, screen.pages.length === 1);
 
   // In reading order: the earlier page first in the DOM, which for a
   // right-to-left book is the right-hand one — the stylesheet reverses them, so
   // the order here stays "as read" and the direction is one CSS rule.
+  const boxes: HTMLElement[] = [];
+  const images: HTMLImageElement[] = [];
+
   screen.pages.forEach((page, index) => {
     const box = document.createElement("div");
     box.className = CLASS_PAGE;
 
     const image = document.createElement("img");
-    image.src = "/image/" + page.id + "/image";
+    image.src = pageUrl(page);
     image.alt = String(screen.start + index + 1);
     image.decoding = "async";
 
     box.appendChild(image);
-    container?.appendChild(box);
+    boxes.push(box);
+    images.push(image);
   });
+
+  const mine = ++drawGeneration;
+  let revealed = false;
+  const reveal = (): void => {
+    // Superseded by a later turn, or the mode went off while waiting.
+    if (revealed || mine !== drawGeneration || !container) return;
+    revealed = true;
+
+    container.textContent = "";
+    container.classList.toggle(CLASS_SINGLE, screen.pages.length === 1);
+    boxes.forEach((box) => {
+      container?.appendChild(box);
+    });
+
+    // The neighbours are warmed *after* this screen is up rather than alongside it:
+    // they are four more images, and on a cold screen they would be competing for
+    // the same bandwidth as the pair the reader is waiting for.
+    preload(at);
+  };
+
+  // Already in the browser's cache — or a DOM that cannot say — means there is
+  // nothing to wait for, and the screen goes up in the same tick as the turn.
+  if (images.every((image) => image.complete !== false)) {
+    reveal();
+  } else {
+    Promise.all(images.map(decodedImage)).then(reveal);
+    window.setTimeout(reveal, REVEAL_BUDGET_MS);
+  }
 
   shownAt = at;
 
@@ -369,17 +463,16 @@ function draw(screen: MangaReaderScreen, at: number): void {
         " — the lightbox's options menu can shift the pairing, and O does the same"
     );
   }
-
-  preload(at);
 }
 
 /**
  * Warms the images of the screens either side.
  *
  * A page turn that waits for its own bytes feels broken, and a screen is two
- * images rather than one, so without this a slow library would show one page of a
- * pair and then the other. Nothing is awaited: this is the browser's cache being
- * filled, which is all the next turn needs.
+ * images rather than one. Nothing is awaited: this is the browser's cache being
+ * filled, and with the version stamp on the URL (see pageUrl) what it fills is the
+ * same entry Stash's own lightbox reads, so the next turn is a cache hit rather
+ * than a fetch.
  */
 function preload(at: number): void {
   const gallery = current();
@@ -391,7 +484,7 @@ function preload(at: number): void {
 
     for (const page of screen.pages) {
       const image = new Image();
-      image.src = "/image/" + page.id + "/image";
+      image.src = pageUrl(page);
     }
   }
 }

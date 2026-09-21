@@ -67,6 +67,12 @@ export interface MangaReaderNamespace {
   parseIndicator(text: string): { current: number; total: number } | null;
   galleryIdFromPath(pathname: string): string | null;
   isWideSpreadPage(page: MangaReaderPage): boolean;
+  /**
+   * How long a screen may be held back waiting for its images, in milliseconds.
+   * Published for the tests, which have to wait exactly that long to see a slow
+   * screen give up and show what it has. See draw in takeover.ts.
+   */
+  REVEAL_BUDGET_MS: number;
   layout(
     pages: MangaReaderPage[],
     options?: Partial<{

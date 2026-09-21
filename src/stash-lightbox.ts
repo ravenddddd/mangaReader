@@ -136,6 +136,9 @@ export const GALLERY_QUERY_TEXT = [
   "          height",
   "        }",
   "      }",
+  "      paths {",
+  "        image",
+  "      }",
   "    }",
   "  }",
   "}",
@@ -150,6 +153,7 @@ interface GalleryPayload {
     images?: Array<{
       id: string;
       visual_files?: Array<{ width?: number; height?: number }>;
+      paths?: { image?: string };
     }>;
   };
 }
@@ -192,6 +196,10 @@ export async function fetchGallery(galleryId: string): Promise<GalleryAnswer> {
         id: String(image.id),
         width: file?.width || 0,
         height: file?.height || 0,
+        // Stash's own URL for the image, kept for the query on it — which is a
+        // version stamp, and is the whole reason this field is fetched at all. See
+        // pageUrl in takeover.ts.
+        url: image.paths?.image || "",
       };
     }
   );

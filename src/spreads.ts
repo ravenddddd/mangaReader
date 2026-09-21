@@ -20,6 +20,14 @@ export interface MangaReaderPage {
   id: string;
   width: number;
   height: number;
+  /**
+   * Stash's own URL for this page, when the API gave one. Only its query is used
+   * — it carries the file's version stamp, which is what makes the reader's
+   * requests the same cached images the lightbox's own are. Optional, because a
+   * page can be built without it (the tests' fixtures are), and a page without one
+   * is still read; it is just fetched the slow way. See pageUrl in takeover.ts.
+   */
+  url?: string;
 }
 
 /** One screenful: what the reader puts on screen at once. */

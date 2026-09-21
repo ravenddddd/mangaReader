@@ -117,6 +117,18 @@ const image = (id, width, height) => ({
   visual_files: [{ width, height }],
 });
 
+/**
+ * The same, with the URL Stash publishes for it — which carries the file's version
+ * stamp in its query. The reader lifts that query onto its own relative path, so
+ * the two are one cache entry rather than two; see pageUrl.
+ */
+const stamped = (id, width, height, t) => ({
+  ...image(id, width, height),
+  paths: {
+    image: "http://stash.example.com:9998/image/" + id + "/image?t=" + t,
+  },
+});
+
 /** A screen list as ids, `+` between the pages that share one. */
 const shape = (screens) =>
   screens.map((s) => s.pages.map((p) => p.id).join("+"));
@@ -231,11 +243,20 @@ const TWO_PAGES = {
 /** One page, which has no counter at all — Stash draws it only for more than one */
 const ONE_PAGE = { images: [image("301", 1000, 1500)] };
 
+/** Two pages Stash published URLs for, version stamp and all */
+const STAMPED_GALLERY = {
+  images: [
+    stamped("501", 1000, 1500, 1700000001),
+    stamped("502", 1000, 1500, 1700000002),
+  ],
+};
+
 dom.window.location.pathname = "/";
 state.galleries["7"] = GALLERY_WITH_A_SPREAD;
 state.galleries["8"] = PLAIN_GALLERY;
 state.galleries["11"] = TWO_PAGES;
 state.galleries["12"] = ONE_PAGE;
+state.galleries["13"] = STAMPED_GALLERY;
 
 // ── Sections ───────────────────────────────────────────────────────
 
@@ -634,6 +655,118 @@ async function main() {
         ["/image/104/image", "/image/105/image"],
         "and the pairing carries on after it — in reading order, which the " +
           "stylesheet reverses for a right-to-left book"
+      );
+
+      stopReader(box);
+    }
+  );
+
+  await runSection(
+    "a screen goes up when both of its images are there",
+    async () => {
+      const { box } = await startReader({ on: true });
+      assert.deepStrictEqual(
+        drawn(),
+        ["/image/101/image"],
+        "precondition: the cover is up"
+      );
+
+      // Held from here: the next turn's images are coming, and are not here.
+      dom.holdImages();
+      box.move(4);
+      dom.flush();
+      assert.deepStrictEqual(
+        drawn(),
+        ["/image/101/image"],
+        "the reader keeps the screen it has rather than showing one page of the next — " +
+          "two images that arrive apart read as a flicker, not as a page"
+      );
+
+      dom.settleImages();
+      await settle();
+      assert.deepStrictEqual(
+        drawn(),
+        ["/image/104/image", "/image/105/image"],
+        "and the pair goes up together once both are ready"
+      );
+
+      stopReader(box);
+    }
+  );
+
+  await runSection(
+    "a slow image does not hold the screen forever",
+    async () => {
+      const { box } = await startReader({ on: true });
+      dom.holdImages();
+      box.move(2);
+      dom.flush();
+      assert.deepStrictEqual(
+        drawn(),
+        ["/image/101/image"],
+        "precondition: waiting, with the previous screen still up"
+      );
+
+      // The budget is the plugin's own, published for this: the wait ends when it
+      // runs out, not when the bytes turn up. A page that never arrives must not be
+      // able to leave the reader on a page they have already turned.
+      await new Promise((resolve) =>
+        setTimeout(resolve, NR.REVEAL_BUDGET_MS + 50)
+      );
+      assert.deepStrictEqual(
+        drawn(),
+        ["/image/102/image"],
+        "past the budget, whatever has arrived is shown"
+      );
+
+      dom.settleImages();
+      stopReader(box);
+    }
+  );
+
+  await runSection(
+    "a screen the reader has left is never shown late",
+    async () => {
+      const { box } = await startReader({ on: true });
+
+      dom.holdImages();
+      box.move(2);
+      dom.flush();
+      box.move(4);
+      dom.flush();
+
+      dom.settleImages();
+      await settle();
+      assert.deepStrictEqual(
+        drawn(),
+        ["/image/104/image", "/image/105/image"],
+        "only the screen the reader is on: the one they turned past does not land on " +
+          "top of it when its images finally arrive"
+      );
+
+      stopReader(box);
+    }
+  );
+
+  await runSection(
+    "the images are asked for the way Stash asks for them",
+    async () => {
+      const { box } = await startReader({
+        galleryId: "13",
+        on: true,
+        total: 2,
+      });
+
+      assert.deepStrictEqual(
+        drawn(),
+        ["/image/501/image?t=1700000001"],
+        "the relative path with the version stamp the API published — which is what " +
+          "makes it the same cache entry Stash's own lightbox fills, rather than a " +
+          "second fetch of an image the browser already has"
+      );
+      assert.ok(
+        dom.preloaded.includes("/image/502/image?t=1700000002"),
+        "and the page being warmed is asked for with its own stamp"
       );
 
       stopReader(box);

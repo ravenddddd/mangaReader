@@ -159,12 +159,36 @@ function makeEvent(type, init) {
 function createDom() {
   const body = makeElement("body");
 
+  // ── Images, and whether they are there yet ──
+  //
+  // A real `<img>` reports what it has: `complete`, and a `decode()` that resolves
+  // when the frame can be painted. The plugin waits on both before showing a
+  // screen, so a stub that had neither would make every screen appear at once —
+  // and the waiting, which is the feature, would be untestable.
+  //
+  // This DOM has no network, so an image *is* there as soon as it is asked for.
+  // Holding them open is how a test sees the wait: `holdImages()` before the turn
+  // the test wants to be slow, then `settleImages()` when the bytes arrive.
+  let imagesHeld = false;
+  const waitingDecodes = [];
+
+  const imageElement = () => {
+    const el = makeElement("img");
+    Object.defineProperty(el, "complete", { get: () => !imagesHeld });
+    el.decode = () =>
+      imagesHeld
+        ? new Promise((resolve) => waitingDecodes.push(resolve))
+        : Promise.resolve();
+    return el;
+  };
+
   const document = {
     body,
     querySelector: (sel) => body.querySelector(sel),
     querySelectorAll: () => [],
     getElementById: (id) => body.querySelector("#" + String(id)),
-    createElement: (tag) => makeElement(tag),
+    createElement: (tag) =>
+      String(tag).toLowerCase() === "img" ? imageElement() : makeElement(tag),
     listeners: {},
     addEventListener(type, fn) {
       if (!document.listeners[type]) document.listeners[type] = [];
@@ -252,6 +276,17 @@ function createDom() {
     observerCount: () => observers.length,
     makeElement,
     makeEvent,
+    /** The images the plugin asks for are not there yet: hold them open. */
+    holdImages() {
+      imagesHeld = true;
+    },
+    /** They have arrived: every held image settles at once. */
+    settleImages() {
+      imagesHeld = false;
+      waitingDecodes.splice(0).forEach((resolve) => {
+        resolve();
+      });
+    },
   };
 }
 

@@ -60,6 +60,37 @@ that cannot tell where it is must not paint. The same goes for a gallery Stash
 cannot answer for, or one whose page count no longer matches what the lightbox is
 showing.
 
+**A screen goes up whole, and both of its images are asked for the way Stash asks
+for them.** Those are two halves of one problem: two pages that arrive separately
+read as a flicker rather than as a page, and the reason they arrived separately was
+mostly self-inflicted.
+
+Stash publishes each image's URL with a **version stamp** on it —
+`/image/<id>/image?t=<mtime>` — and its own lightbox uses that URL. The plugin
+used to build `/image/<id>/image` by hand, without the stamp, and the two are
+**different browser cache entries**:
+
+| URL | what the server answers with |
+|---|---|
+| `/image/<id>/image?t=<mtime>` | `private, max-age=31536000, immutable` |
+| `/image/<id>/image` | `no-cache` |
+
+So the hand-built URL did not merely miss a version: it threw away the caching
+Stash's own lightbox had already paid for, and every page was fetched twice — once
+by Stash's carousel, once by the reader — with nothing making the two halves of a
+screen finish together. The fix is one field in the query (`paths { image }`), whose
+query is lifted onto the reader's own relative path: same resource, same cache
+entry, and now the pages Stash has already loaded are there the moment they are
+asked for.
+
+What remains is genuinely cold: the first screen, a jump, a slow disk. For those,
+the screen is built **detached** and shown in one step — the reader keeps whatever
+is already on screen until both images can be painted (the browser is asked with
+`decode()`, not guessed at) — and a **budget of 300 ms** caps the wait, so a page
+that never arrives cannot leave the reader looking at one they have already turned.
+A turn that overtakes a screen still waiting takes its place: a counter decides
+which draw owns the container, so the older one cannot land on top of it.
+
 ## What is not here yet
 
 - **No zoom or pan in spread mode.** Stash's zoom acts on the carousel, which is
