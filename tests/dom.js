@@ -126,6 +126,19 @@ function makeElement(tagName) {
     dispatch(type, event) {
       for (const fn of el.listeners[type] || []) fn(event || { type });
     },
+
+    /**
+     * The animations started on this element, in order.
+     *
+     * A screen fades in as it arrives, and whether that happened is a thing only
+     * this can see: it leaves no DOM behind, which is the point of animating a
+     * property rather than a class.
+     */
+    animations: [],
+    animate(keyframes, options) {
+      el.animations.push({ keyframes, options });
+      return { cancel() {} };
+    },
   };
 
   Object.defineProperty(el, "textContent", {
@@ -251,9 +264,19 @@ function createDom() {
 
   const storage = new Map();
 
+  /**
+   * Whether the reader has asked their system for less motion. The plugin checks it
+   * before fading a screen in, and a test can turn it on — see prefersReducedMotion.
+   */
+  let reducedMotion = false;
+
   const window = {
     document,
     location: { pathname: "/" },
+    matchMedia: (query) => ({
+      matches: /prefers-reduced-motion/.test(query) && reducedMotion,
+      media: query,
+    }),
     localStorage: {
       getItem: (key) => (storage.has(key) ? storage.get(key) : null),
       setItem: (key, value) => storage.set(key, String(value)),
@@ -324,6 +347,10 @@ function createDom() {
       }
 
       return event;
+    },
+    /** Says the reader has asked their system for less motion */
+    prefersReducedMotion(on) {
+      reducedMotion = !!on;
     },
     /** The images the plugin asks for are not there yet: hold them open. */
     holdImages() {

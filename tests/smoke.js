@@ -1102,6 +1102,53 @@ async function main() {
     }
   );
 
+  await runSection("a screen arrives rather than snapping in", async () => {
+    const { box } = await startReader({ galleryId: "8", on: true });
+
+    const spread = container();
+    assert.strictEqual(
+      spread.animations.length,
+      1,
+      "the first screen fades in as it arrives"
+    );
+    assert.deepStrictEqual(
+      spread.animations[0].keyframes,
+      [{ opacity: 0 }, { opacity: 1 }],
+      "…from nothing to what it is: a fade, not a slide or a scale"
+    );
+
+    // Counted, not compared against one: the animations are the container's own
+    // history, and the container outlives the screens drawn into it.
+    const before = spread.animations.length;
+    box.move(2);
+    dom.flush();
+    assert.strictEqual(
+      spread.animations.length,
+      before + 1,
+      "and every screen after it does the same"
+    );
+
+    // A reader who has asked their system for less motion gets the page, not the
+    // dissolve — decoration does not get to overrule that.
+    dom.prefersReducedMotion(true);
+    const quiet = spread.animations.length;
+    box.move(4);
+    dom.flush();
+    assert.strictEqual(
+      spread.animations.length,
+      quiet,
+      "nothing is animated when reduced motion is on"
+    );
+    assert.deepStrictEqual(
+      drawn(),
+      ["/image/404/image", "/image/405/image"],
+      "…though the screen itself is still drawn"
+    );
+    dom.prefersReducedMotion(false);
+
+    stopReader(box);
+  });
+
   await runSection("the offset key re-pairs the gallery", async () => {
     const { box, popover } = await startReader({ galleryId: "8", on: true });
 

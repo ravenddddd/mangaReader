@@ -19,6 +19,7 @@ While the switch is on, and while you are reading a **gallery**:
 | **Arrows and chevrons** | Left and right move a *screen*, not a page — so a pair advances together. The keyboard arrows and Stash's own chevrons both go through the same turn |
 | **Clicks** | Clicking a page turns it, right half forward and left half back, exactly as Stash's own image click does. Clicking the space around the pages still closes the lightbox |
 | **Shift the pairing** | A second switch in the options menu, or `O`, for a gallery whose pages are grouped wrongly. Remembered for that gallery |
+| **The change of screen** | Fades in rather than snapping — briefly, and never at the cost of a wait. Nothing is animated for a reader who has asked their system for less motion |
 | **Everything else** | Untouched. The header counter, the chapters, the nav strip, Escape, fullscreen, the slideshow — all still Stash's, and all still work, because the lightbox is still what says which page you are on |
 
 Both switches are remembered per browser, like the lightbox options they sit
@@ -109,6 +110,14 @@ is already on screen until both images can be painted (the browser is asked with
 that never arrives cannot leave the reader looking at one they have already turned.
 A turn that overtakes a screen still waiting takes its place: a counter decides
 which draw owns the container, so the older one cannot land on top of it.
+
+That one step is then **faded in**, over about 140 ms: a pair of pages filling the
+display is a large area to change between two frames, and at a turn that reads as a
+flash. The fade is against the lightbox's own background rather than over the page
+before it — a cross-fade is smoother on a photograph and worse on everything else,
+since two pages of text superimposed are illegible soup for as long as it lasts. It
+starts only once the images are there, so it is never a wait in disguise, and it
+does not happen at all for a reader whose system asks for less motion.
 
 ## What is not here yet
 

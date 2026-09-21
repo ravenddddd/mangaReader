@@ -395,6 +395,37 @@ const REVEAL_BUDGET_MS = 300;
 NR.REVEAL_BUDGET_MS = REVEAL_BUDGET_MS;
 
 /**
+ * How long a screen takes to arrive, in milliseconds.
+ *
+ * Short on purpose. A pair of pages filling the display is a large area to change
+ * between two frames, and at a turn that reads as a flash — but the fade is only
+ * meant to take the edge off that, not to be watched. Long enough to notice, short
+ * enough that a reader turning quickly is never waiting for it.
+ */
+const FADE_MS = 140;
+
+/**
+ * Fades a screen in as it arrives.
+ *
+ * Against the lightbox's own background, not over the page before it. A cross-fade
+ * is smoother on a photograph and worse on everything else: two pages of text
+ * superimposed are illegible soup for as long as it lasts, which is the opposite of
+ * what a fade is for. The carousel is hidden rather than gone, so what shows through
+ * is Stash's own backdrop.
+ *
+ * Skipped entirely for a reader who has asked their system for less motion. This is
+ * decoration, and decoration does not get to overrule that.
+ */
+function fadeIn(element: HTMLElement): void {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  element.animate([{ opacity: 0 }, { opacity: 1 }], {
+    duration: FADE_MS,
+    easing: "ease-out",
+  });
+}
+
+/**
  * The URL to fetch a page from.
  *
  * The path is the one this plugin has always built; the query is Stash's own,
@@ -483,6 +514,7 @@ function draw(screen: MangaReaderScreen, at: number): void {
     boxes.forEach((box) => {
       container?.appendChild(box);
     });
+    fadeIn(container);
 
     // The neighbours are warmed *after* this screen is up rather than alongside it:
     // they are four more images, and on a cold screen they would be competing for
