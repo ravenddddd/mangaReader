@@ -146,9 +146,26 @@ function buildLightbox(current = 1, total = 5) {
 
   const display = dom.makeElement("div");
   display.className = "Lightbox-display";
+
+  // Stash's own chevrons, either side of the carousel and the same component
+  // twice — what tells them apart is the Font Awesome icon inside each, which is
+  // what the plugin reads.
+  const navButton = (icon) => {
+    const button = dom.makeElement("button");
+    button.className = "Lightbox-navbutton d-none d-lg-block btn btn-link";
+    const svg = dom.makeElement("svg");
+    svg.dataset.icon = icon;
+    button.appendChild(svg);
+    return button;
+  };
+  const navLeft = navButton("chevron-left");
+  const navRight = navButton("chevron-right");
+
   const carousel = dom.makeElement("div");
   carousel.className = "Lightbox-carousel";
+  display.appendChild(navLeft);
   display.appendChild(carousel);
+  display.appendChild(navRight);
 
   const header = dom.makeElement("div");
   header.className = "Lightbox-header";
@@ -171,6 +188,8 @@ function buildLightbox(current = 1, total = 5) {
     lightbox,
     display,
     carousel,
+    navLeft,
+    navRight,
     counter,
     /** What a reader sees as the lightbox moves — Stash rewrites this text */
     move: (at) => {
@@ -607,11 +626,13 @@ async function main() {
         box.display,
         "inside the display area"
       );
-      assert.strictEqual(
-        box.display.children.indexOf(drawnBox),
-        1,
+      assert.ok(
+        box.display.children.indexOf(drawnBox) >
+          box.display.children.indexOf(box.carousel),
         "beside Stash's carousel rather than in place of it — which is what keeps " +
-          "React free to re-render its own subtree without ours going with it"
+          "React free to re-render its own subtree without ours going with it. " +
+          "Compared by position rather than by an index into markup this plugin " +
+          "does not own, since Stash's chevrons sit in that row too"
       );
       assert.strictEqual(
         box.lightbox.classList.contains("manga-reader-active"),
@@ -948,6 +969,133 @@ async function main() {
         sent,
         ["ArrowRight"],
         "…and nothing is sent for it"
+      );
+
+      stopReader(box);
+    }
+  );
+
+  await runSection(
+    "Stash's own chevrons turn a screen, not a page",
+    async () => {
+      const { box } = await startReader({ galleryId: "8", on: true });
+      const sent = [];
+      dom.document.addEventListener("keydown", (event) => sent.push(event.key));
+
+      // Page 2 is the first of the pair 402+403, so a turn is two pages: Stash's own
+      // handler would move one, which is the same screen, and the reader would see
+      // nothing happen.
+      box.move(2);
+      dom.flush();
+      sent.length = 0;
+      const click = dom.click(box.navRight);
+      assert.strictEqual(
+        click.defaultPrevented,
+        true,
+        "the click is the reader's"
+      );
+      assert.strictEqual(
+        click.propagationStopped,
+        true,
+        "…and Stash's own button never sees it"
+      );
+      assert.deepStrictEqual(
+        sent,
+        ["ArrowRight"],
+        "the first of the two presses"
+      );
+
+      box.move(3);
+      dom.flush();
+      assert.deepStrictEqual(
+        sent,
+        ["ArrowRight", "ArrowRight"],
+        "and the second, once the lightbox has said it landed"
+      );
+
+      box.move(3);
+      dom.flush();
+      sent.length = 0;
+      const back = dom.click(box.navLeft);
+      assert.strictEqual(
+        back.propagationStopped,
+        true,
+        "the other chevron is the same"
+      );
+      assert.deepStrictEqual(
+        sent,
+        ["ArrowLeft"],
+        "and goes back the way it came"
+      );
+
+      stopReader(box);
+    }
+  );
+
+  await runSection(
+    "a click on a page turns it, as Stash's own does",
+    async () => {
+      const { box } = await startReader({ galleryId: "8", on: true });
+      const sent = [];
+      dom.document.addEventListener("keydown", (event) => sent.push(event.key));
+
+      const page = () => container().children[0].children[0];
+      // As the browser would report it: the width of the image on screen, which is
+      // what tells the two halves apart. Set per draw, because a draw replaces the
+      // images.
+      const laidOut = () => {
+        page().offsetWidth = 100;
+      };
+
+      box.move(2);
+      dom.flush();
+      laidOut();
+      sent.length = 0;
+      const forward = dom.click(page(), { offsetX: 80 });
+      assert.deepStrictEqual(
+        sent,
+        ["ArrowRight"],
+        "the right half of a page goes forward, like Stash's own image click"
+      );
+      assert.strictEqual(forward.propagationStopped, true);
+
+      box.move(2);
+      dom.flush();
+      laidOut();
+      sent.length = 0;
+      dom.click(page(), { offsetX: 10 });
+      assert.deepStrictEqual(
+        sent,
+        ["ArrowLeft"],
+        "and the left half goes back"
+      );
+
+      stopReader(box);
+    }
+  );
+
+  await runSection(
+    "the space around the pages still closes the lightbox",
+    async () => {
+      const { box } = await startReader({ galleryId: "8", on: true });
+      const keys = [];
+      dom.document.addEventListener("keydown", (event) => keys.push(event.key));
+
+      // Stash closes its lightbox when a click reaches the slide the pages sit in
+      // (Lightbox.tsx's handleClose), and every bit of that slide is behind this
+      // plugin's container — so the click is turned back into what Stash would have
+      // done with it, which is Escape. What the harness can see is the ask: its
+      // lightbox has no Escape of its own to act on it.
+      const click = dom.click(container());
+      assert.deepStrictEqual(
+        keys,
+        ["Escape"],
+        "a click on the letterbox asks Stash to close"
+      );
+      assert.strictEqual(
+        click.propagationStopped,
+        true,
+        "and nothing else sees it"
       );
 
       stopReader(box);

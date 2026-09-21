@@ -26,6 +26,9 @@ function makeElement(tagName) {
     tagName: String(tagName).toUpperCase(),
     id: "",
     className: "",
+    // `data-*` attributes, as the real element exposes them: the plugin reads one
+    // to tell Stash's two nav buttons apart.
+    dataset: {},
     style: {},
     children: [],
     parentNode: null,
@@ -108,6 +111,15 @@ function makeElement(tagName) {
     addEventListener(type, fn) {
       if (!el.listeners[type]) el.listeners[type] = [];
       el.listeners[type].push(fn);
+    },
+
+    /** Removing one matters here: the plugin takes its lightbox listener off again */
+    removeEventListener(type, fn) {
+      const list = el.listeners[type];
+      if (!list) return;
+
+      const at = list.indexOf(fn);
+      if (at !== -1) list.splice(at, 1);
     },
 
     /** Fires the listeners this stub holds — the test's way of clicking things. */
@@ -293,6 +305,24 @@ function createDom() {
     dispatchTo(target, event) {
       event.target = target;
       for (const fn of window.listeners[event.type] || []) fn(event);
+      return event;
+    },
+    /**
+     * A click on an element, bubbling up through its ancestors — which is how the
+     * plugin hears it: it listens on its own container for clicks on a page, and on
+     * the lightbox for clicks on Stash's nav buttons.
+     */
+    click(target, init) {
+      const event = makeEvent("click", Object.assign({ offsetX: 0 }, init));
+      event.target = target;
+
+      for (let el = target; el; el = el.parentNode) {
+        const listener = el.listeners.click;
+        if (typeof listener === "function") listener(event);
+        else if (Array.isArray(listener)) for (const fn of listener) fn(event);
+        if (event.propagationStopped) break;
+      }
+
       return event;
     },
     /** The images the plugin asks for are not there yet: hold them open. */

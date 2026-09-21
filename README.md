@@ -16,7 +16,8 @@ While the switch is on, and while you are reading a **gallery**:
 | **Two pages at once** | Laid out to fit the screen, in reading order, the earlier page on the right |
 | **Spreads** | A page wider than it is tall is taken for one image spanning two pages, and stands alone |
 | **The cover** | Stands alone. A cover is not the left half of anything |
-| **Arrows** | Left and right move a *screen*, not a page — so a pair advances together |
+| **Arrows and chevrons** | Left and right move a *screen*, not a page — so a pair advances together. The keyboard arrows and Stash's own chevrons both go through the same turn |
+| **Clicks** | Clicking a page turns it, right half forward and left half back, exactly as Stash's own image click does. Clicking the space around the pages still closes the lightbox |
 | **Shift the pairing** | A second switch in the options menu, or `O`, for a gallery whose pages are grouped wrongly. Remembered for that gallery |
 | **Everything else** | Untouched. The header counter, the chapters, the nav strip, Escape, fullscreen, the slideshow — all still Stash's, and all still work, because the lightbox is still what says which page you are on |
 
@@ -59,6 +60,24 @@ drawing and says so in the console rather than drawing something wrong: a canvas
 that cannot tell where it is must not paint. The same goes for a gallery Stash
 cannot answer for, or one whose page count no longer matches what the lightbox is
 showing.
+
+**Stash's own ways of turning a page go through this plugin's turn.** There are
+three of them and none of them can be left alone once the pages are paired:
+
+- the **keyboard arrows**, taken in the capture phase on the window, in front of
+  Stash's own handler;
+- the **chevrons** either side of the image, which are Stash's buttons and move one
+  page — in a two-page view the same screen, so a reader clicking one sees nothing
+  happen. The click is stopped before Stash's React handler sees it and the same
+  errand an arrow press starts is started instead;
+- the **click on a page**, which Stash reads per image (the right half forward, the
+  left half back) and this plugin reads the same way.
+
+Every one of them ends in `turnBy`, so the three cannot disagree about what a turn
+is. The exception is the click *around* the pages: Stash closes the lightbox when a
+click reaches the slide its images sit in, and this plugin's container covers that
+slide — so a click there is turned back into what Stash would have done with it, an
+`Escape`, which is Stash's own closing path and not a second idea of closing.
 
 **A screen goes up whole, and both of its images are asked for the way Stash asks
 for them.** Those are two halves of one problem: two pages that arrive separately

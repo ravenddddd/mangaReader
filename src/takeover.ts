@@ -36,12 +36,14 @@ import {
 import type { MangaReaderPage, MangaReaderScreen } from "./spreads";
 import { layout, screenAt, stepsToAdjacent } from "./spreads";
 import {
+  CLASS_NAVBUTTON,
   SELECTOR_DISPLAY,
   SELECTOR_LIGHTBOX,
   SELECTOR_POPOVER_BODY,
   fetchGallery,
   galleryIdFromPath,
   pressArrow,
+  pressEscape,
   readPosition,
 } from "./stash-lightbox";
 
@@ -127,6 +129,11 @@ let offsetFor: string | null = null;
 let reinsers = 0;
 let language: string | null = null;
 let logged = false;
+
+/**
+ * The lightbox whose clicks this plugin is listening to, if any. See watchClicks.
+ */
+let clickRoot: Element | null = null;
 
 /**
  * Where the lightbox is being moved to, while it is on the way there.
@@ -319,6 +326,21 @@ function sync(lightbox: Element): void {
 }
 
 /**
+ * Starts listening for clicks on Stash's nav buttons, once per lightbox.
+ *
+ * In the capture phase on the lightbox itself, which is what puts this in front of
+ * Stash's own React handler: React listens on the root container, and an event that
+ * has already been stopped on the way down never reaches it.
+ */
+function watchClicks(lightbox: Element): void {
+  if (clickRoot === lightbox) return;
+
+  if (clickRoot) clickRoot.removeEventListener("click", onNavClick, true);
+  lightbox.addEventListener("click", onNavClick, true);
+  clickRoot = lightbox;
+}
+
+/**
  * Creates the container, or puts it back if React has taken it away.
  *
  * Called only when there is something to draw, which is what makes a gallery with
@@ -331,6 +353,8 @@ function ensureContainer(lightbox: Element): void {
     deactivate();
     return;
   }
+
+  watchClicks(lightbox);
 
   if (container && container.parentNode === display) return;
 
@@ -349,6 +373,7 @@ function ensureContainer(lightbox: Element): void {
   if (!container) {
     container = document.createElement("div");
     container.className = CLASS_SPREAD;
+    container.addEventListener("click", onSpreadClick);
   }
 
   // Stash's own layers above this one are positioned; this makes the display the
@@ -661,6 +686,11 @@ function deactivate(): void {
 }
 
 function closeLightbox(): void {
+  if (clickRoot) {
+    clickRoot.removeEventListener("click", onNavClick, true);
+    clickRoot = null;
+  }
+
   deactivate();
   root = null;
   galleryId = null;
@@ -881,22 +911,123 @@ function onKeyDown(event: KeyboardEvent): void {
 
   if (arrowsBelongTo(event.target as HTMLElement | null)) return;
 
-  const at = currentIndex(lightbox);
-  if (at === null) return;
-
-  const steps = stepsToAdjacent(
-    gallery.screens,
-    at,
-    event.key === "ArrowRight" ? 1 : -1
-  );
-
   // Nothing that way: leave the event to Stash, which will do exactly as much,
   // which is nothing. Consuming it here would only be a lie about having moved.
-  if (steps === 0) return;
+  if (!turnBy(lightbox, event.key === "ArrowRight" ? 1 : -1)) return;
 
   event.preventDefault();
   event.stopPropagation();
+}
+
+/**
+ * Turns the lightbox by one *screen* in `direction`, and says whether it moved.
+ *
+ * The one place a turn happens, so that the three ways to ask for one — this
+ * plugin's arrow keys, Stash's nav buttons and a click on a page — cannot disagree
+ * about what a turn is. `false` means there is no screen that way, which is
+ * deliberately not the same as having moved: a caller that says something happened
+ * when nothing did is worse than one that says nothing.
+ */
+function turnBy(lightbox: Element, direction: 1 | -1): boolean {
+  const gallery = current();
+  if (!gallery) return false;
+
+  const at = currentIndex(lightbox);
+  if (at === null) return false;
+
+  const steps = stepsToAdjacent(gallery.screens, at, direction);
+  if (steps === 0) return false;
+
   startErrand(lightbox, at + steps);
+  return true;
+}
+
+/**
+ * The icon Stash put inside one of its nav buttons, or "" when there is none.
+ *
+ * Walked rather than queried, and by hand: the two buttons are the same component
+ * twice, so this is what tells them apart, and `data-icon` is Font Awesome's own
+ * attribute rather than a class of Stash's that could be renamed.
+ */
+function navIcon(button: Element): string {
+  for (const child of Array.from(button.children)) {
+    const name = (child as HTMLElement).dataset?.icon;
+    if (name) return name;
+  }
+  return "";
+}
+
+/** Which way a click on Stash's nav buttons goes, or 0 for anything else */
+function navDirection(target: Element | null): 1 | -1 | 0 {
+  let el: Element | null = target;
+  while (el && !el.classList?.contains(CLASS_NAVBUTTON)) el = el.parentElement;
+  if (!el) return 0;
+
+  const icon = navIcon(el);
+  if (icon === "chevron-right") return 1;
+  if (icon === "chevron-left") return -1;
+
+  // An icon this plugin does not recognise: leave the button to Stash rather than
+  // guess a direction from the order the two happen to be rendered in.
+  return 0;
+}
+
+/**
+ * Stash's own nav buttons, taken over the way its arrow keys are.
+ *
+ * They are Stash's buttons and they move one page, which in a two-page view is the
+ * same screen — so a reader who clicks the chevrons sees nothing happen, twice. The
+ * click is stopped before Stash's own handler sees it and the same turn an arrow
+ * press starts is started instead.
+ *
+ * On the lightbox in the capture phase, because the buttons are Stash's and may be
+ * re-rendered at any time: one listener that survives that is worth more than two
+ * on elements that do not.
+ */
+function onNavClick(event: Event): void {
+  if (!wanted() || !container || !root) return;
+
+  const direction = navDirection(event.target as Element | null);
+  if (!direction) return;
+
+  if (turnBy(root, direction)) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+}
+
+/**
+ * A click on this plugin's own pages, and on the space around them.
+ *
+ * Both are Stash's behaviours, which the container would otherwise swallow by
+ * covering the slide they used to land on:
+ *
+ *   - **on a page**: the right half turns forward and the left half back, exactly
+ *     as Stash's own image click does (LightboxImage.tsx). Read per image, as Stash
+ *     reads it, rather than per screen — a pair is two images and each half of each
+ *     one goes the way the reader who clicked it meant.
+ *   - **anywhere else**, the letterbox: Stash closes the lightbox when a click
+ *     reaches the slide, and the whole slide is behind these pages.
+ */
+function onSpreadClick(event: Event): void {
+  const lightbox = root;
+  if (!lightbox || !container) return;
+
+  const target = event.target as HTMLElement | null;
+  if (target?.tagName !== "IMG") {
+    event.stopPropagation();
+    pressEscape();
+    return;
+  }
+
+  // `offsetX` is the click's place inside the image itself, which is how Stash
+  // reads it too: per image, not per screen. A width that cannot be compared —
+  // nothing laid out yet — goes forward, which is the direction a click on a page
+  // means when there is nothing to read into it.
+  const click = event as MouseEvent;
+  const width = target.offsetWidth;
+  const forward = !width || click.offsetX >= width / 2;
+  if (turnBy(lightbox, forward ? 1 : -1)) event.stopPropagation();
 }
 
 /**

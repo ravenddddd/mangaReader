@@ -32,6 +32,15 @@ export const SELECTOR_INDICATOR = ".Lightbox-header-indicator";
 export const SELECTOR_OPTIONS_ICON = ".Lightbox-header-options-icon";
 export const SELECTOR_POPOVER_BODY = ".popover .popover-body";
 
+/**
+ * Stash's own next/previous buttons, the chevrons either side of the image.
+ *
+ * A class rather than a selector because the plugin walks up to one from a click's
+ * target; the two buttons are the same component twice, so the icon inside is what
+ * tells them apart — see navDirection in takeover.ts.
+ */
+export const CLASS_NAVBUTTON = "Lightbox-navbutton";
+
 /** Where the lightbox is, as far as the reader can tell. */
 export interface LightboxPosition {
   /** 1-based, as the lightbox's own header counts */
@@ -98,6 +107,25 @@ export function pressArrow(direction: 1 | -1): void {
   document.dispatchEvent(
     new KeyboardEvent("keydown", {
       key: direction > 0 ? "ArrowRight" : "ArrowLeft",
+      bubbles: true,
+      cancelable: true,
+    })
+  );
+}
+
+/**
+ * Closes the lightbox, through Stash's own Escape.
+ *
+ * Stash listens for it on the document and closes — the same `close()` its own
+ * click-on-the-background runs, so this is Stash's path rather than a second idea
+ * of what closing means. The plugin needs it because its container covers the slide
+ * that click would have landed on: everything under the pages is ours, so a click
+ * there has to be turned back into what Stash would have done with it.
+ */
+export function pressEscape(): void {
+  document.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Escape",
       bubbles: true,
       cancelable: true,
     })
