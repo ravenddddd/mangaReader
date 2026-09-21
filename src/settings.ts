@@ -17,6 +17,15 @@ import { NR, type MangaReaderSettings } from "./plugin-api";
 const STORAGE_KEY = "mangaReader.settings";
 
 /**
+ * The longest a screen may take to arrive, in milliseconds.
+ *
+ * The same number the slider in the options menu stops at. Its job is as much
+ * diagnostic as aesthetic: a reader who cannot see a 140 ms fade has to be able to
+ * push it somewhere unmistakable to find out whether it is working at all.
+ */
+export const FADE_MAX_MS = 1000;
+
+/**
  * The settings a browser that has never been asked reads as.
  *
  * The mode itself is **off**. The lightbox is used for every kind of image in
@@ -29,6 +38,7 @@ export const DEFAULT_SETTINGS: MangaReaderSettings = {
   doublePage: false,
   coverAlone: true,
   detectSpreads: true,
+  fadeMs: 140,
 };
 
 /**
@@ -55,12 +65,24 @@ export function parseSettings(raw: string | null): MangaReaderSettings {
   const flag = (key: keyof MangaReaderSettings): boolean =>
     typeof stored[key] === "boolean"
       ? (stored[key] as boolean)
-      : DEFAULT_SETTINGS[key];
+      : (DEFAULT_SETTINGS[key] as boolean);
+
+  // Clamped rather than taken as written: the value ends up in a Web Animation, and
+  // a hand-edited negative or absurd one would be a screen that never appears.
+  const duration = (key: keyof MangaReaderSettings): number => {
+    const value = stored[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return DEFAULT_SETTINGS[key] as number;
+    }
+
+    return Math.min(FADE_MAX_MS, Math.max(0, Math.round(value)));
+  };
 
   return {
     doublePage: flag("doublePage"),
     coverAlone: flag("coverAlone"),
     detectSpreads: flag("detectSpreads"),
+    fadeMs: duration("fadeMs"),
   };
 }
 
@@ -160,3 +182,4 @@ export function writeOffset(galleryId: string, offset: 0 | 1): void {
 
 NR.parseSettings = parseSettings;
 NR.parseOffsets = parseOffsets;
+NR.FADE_MAX_MS = FADE_MAX_MS;

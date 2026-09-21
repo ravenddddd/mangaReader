@@ -42,6 +42,14 @@ export interface MangaReaderSettings {
   coverAlone: boolean;
   /** Whether a page wider than it is tall is taken for a spread. */
   detectSpreads: boolean;
+  /**
+   * How long a screen takes to fade in, in milliseconds. 0 draws it at once.
+   *
+   * A setting rather than a constant because how much of this is pleasant is a
+   * matter of taste and of screen, and because "is it doing anything at all" is a
+   * question a reader can only answer by moving it to an extreme.
+   */
+  fadeMs: number;
 }
 
 /** What is being read: the pages, and where the reader is. */
@@ -73,6 +81,8 @@ export interface MangaReaderNamespace {
    * screen give up and show what it has. See draw in takeover.ts.
    */
   REVEAL_BUDGET_MS: number;
+  /** The longest a screen may take to fade in. See FADE_MAX_MS in settings.ts. */
+  FADE_MAX_MS: number;
   layout(
     pages: MangaReaderPage[],
     options?: Partial<{

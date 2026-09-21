@@ -28,6 +28,7 @@ import { labelFor } from "./i18n";
 import { NR } from "./plugin-api";
 import type { MangaReaderGallery, MangaReaderSettings } from "./plugin-api";
 import {
+  FADE_MAX_MS,
   readOffset,
   readSettings,
   writeOffset,
@@ -55,6 +56,7 @@ const CLASS_PAGE = "manga-reader-page";
 const CLASS_SINGLE = "is-single";
 /** The switches this plugin adds to the lightbox's options menu */
 const SWITCH_ID = "manga-reader-double-page";
+const FADE_ID = "manga-reader-fade";
 const OFFSET_ID = "manga-reader-offset";
 /** Class of the group holding them, so it can be found again */
 const CLASS_OPTIONS = "manga-reader-options";
@@ -395,16 +397,6 @@ const REVEAL_BUDGET_MS = 300;
 NR.REVEAL_BUDGET_MS = REVEAL_BUDGET_MS;
 
 /**
- * How long a screen takes to arrive, in milliseconds.
- *
- * Short on purpose. A pair of pages filling the display is a large area to change
- * between two frames, and at a turn that reads as a flash — but the fade is only
- * meant to take the edge off that, not to be watched. Long enough to notice, short
- * enough that a reader turning quickly is never waiting for it.
- */
-const FADE_MS = 140;
-
-/**
  * Fades a screen in as it arrives.
  *
  * Against the lightbox's own background, not over the page before it. A cross-fade
@@ -413,14 +405,16 @@ const FADE_MS = 140;
  * what a fade is for. The carousel is hidden rather than gone, so what shows through
  * is Stash's own backdrop.
  *
- * Skipped entirely for a reader who has asked their system for less motion. This is
- * decoration, and decoration does not get to overrule that.
+ * How long it lasts is the reader's setting — the slider in the options menu — and 0
+ * draws the screen at once. Skipped entirely for a reader who has asked their system
+ * for less motion: this is decoration, and decoration does not get to overrule that.
  */
 function fadeIn(element: HTMLElement): void {
+  if (settings.fadeMs <= 0) return;
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
   element.animate([{ opacity: 0 }, { opacity: 1 }], {
-    duration: FADE_MS,
+    duration: settings.fadeMs,
     easing: "ease-out",
   });
 }
@@ -779,8 +773,84 @@ function injectSwitch(lightbox: Element): void {
     })
   );
 
+  // Beside the switch, because it is the same kind of thing: a reading preference
+  // that lives with Stash's own in this menu. Its range reaches somewhere
+  // unmistakable on purpose — a reader who cannot see a short fade has to be able to
+  // find out whether it is working.
+  group.appendChild(
+    slider({
+      id: FADE_ID,
+      label: labelFor(language, "fade"),
+      value: settings.fadeMs,
+      max: FADE_MAX_MS,
+      step: 20,
+      unit: " ms",
+      onChange: (value) => {
+        settings = writeSettings({ fadeMs: value });
+      },
+    })
+  );
+
   addOffsetSwitch(group);
   body.appendChild(group);
+}
+
+/**
+ * A number the reader picks by dragging — this plugin's one setting that is not a
+ * switch.
+ *
+ * A range input rather than a number box because the value is a feel and not a
+ * figure, with the figure shown beside it so that "140" can mean something. `input`
+ * rather than `change`, so what it sets follows the drag and a reader can find the
+ * setting that suits them by looking.
+ */
+function slider(option: {
+  id: string;
+  label: string;
+  value: number;
+  max: number;
+  step: number;
+  unit: string;
+  onChange: (value: number) => void;
+}): Element {
+  const row = document.createElement("div");
+  row.className = "row mb-1";
+
+  const column = document.createElement("div");
+  column.className = "col";
+
+  const label = document.createElement("label");
+  label.className = "form-label mb-0";
+  label.htmlFor = option.id;
+  label.textContent = option.label;
+
+  const readout = document.createElement("span");
+  readout.className = "ml-1";
+  readout.textContent = option.value + option.unit;
+  label.appendChild(readout);
+
+  const input = document.createElement("input");
+  input.type = "range";
+  input.className = "form-control-range";
+  input.id = option.id;
+  input.min = "0";
+  input.max = String(option.max);
+  input.step = String(option.step);
+  input.value = String(option.value);
+
+  input.addEventListener("input", () => {
+    const value = Number(input.value);
+    // The readout follows the drag rather than the next render: nothing else
+    // redraws this menu while the reader is dragging.
+    readout.textContent = value + option.unit;
+    option.onChange(value);
+  });
+
+  column.appendChild(label);
+  column.appendChild(input);
+  row.appendChild(column);
+
+  return row;
 }
 
 /** Adds the offset switch to the group, once there is a gallery to shift */

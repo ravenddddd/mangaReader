@@ -12,15 +12,16 @@
  * interface is set to, so there is nothing in the DOM to read.
  */
 
-type MangaReaderLabelKey = "doublePage" | "offset";
+type MangaReaderLabelKey = "doublePage" | "fade" | "offset";
 
 const LABELS: { [locale: string]: { [key in MangaReaderLabelKey]: string } } = {
   en: {
     doublePage: "Double page",
+    fade: "Fade in",
     offset: "Shift the pairing by one page",
   },
-  "zh-Hans": { doublePage: "双页阅读", offset: "配对偏移一格" },
-  "zh-Hant": { doublePage: "雙頁閱讀", offset: "配對偏移一格" },
+  "zh-Hans": { doublePage: "双页阅读", fade: "淡入", offset: "配对偏移一格" },
+  "zh-Hant": { doublePage: "雙頁閱讀", fade: "淡入", offset: "配對偏移一格" },
 };
 
 /**

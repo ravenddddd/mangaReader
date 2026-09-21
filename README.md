@@ -19,12 +19,17 @@ While the switch is on, and while you are reading a **gallery**:
 | **Arrows and chevrons** | Left and right move a *screen*, not a page — so a pair advances together. The keyboard arrows and Stash's own chevrons both go through the same turn |
 | **Clicks** | Clicking a page turns it, right half forward and left half back, exactly as Stash's own image click does. Clicking the space around the pages still closes the lightbox |
 | **Shift the pairing** | A second switch in the options menu, or `O`, for a gallery whose pages are grouped wrongly. Remembered for that gallery |
-| **The change of screen** | Fades in rather than snapping — briefly, and never at the cost of a wait. Nothing is animated for a reader who has asked their system for less motion |
+| **The change of screen** | Fades in rather than snapping — briefly, and never at the cost of a wait. A slider in the options menu sets how long, down to 0 for none. Nothing is animated for a reader who has asked their system for less motion |
 | **Everything else** | Untouched. The header counter, the chapters, the nav strip, Escape, fullscreen, the slideshow — all still Stash's, and all still work, because the lightbox is still what says which page you are on |
 
-Both switches are remembered per browser, like the lightbox options they sit
+All of it is remembered per browser, like the lightbox options the controls sit
 beside — except the shift, which is remembered *per gallery*, because that is what
 it belongs to: one scan's pages need shifting and the gallery next to it does not.
+
+The fade length is a **slider rather than a number box**, with the value shown beside
+it, and its range reaches 1000 ms on purpose: a reader who cannot see a short fade
+has to be able to push it somewhere unmistakable and find out whether it is doing
+anything at all. 0 is a setting too — the screen is drawn at once.
 
 Off a gallery page — an image list, a scene's stills — the mode draws nothing, even
 switched on: pairing pages only means something inside a gallery.

@@ -296,26 +296,60 @@ async function main() {
   });
 
   await runSection("settings are parsed defensively", () => {
+    const defaults = {
+      doublePage: false,
+      coverAlone: true,
+      detectSpreads: true,
+      fadeMs: 140,
+    };
+
     assert.deepStrictEqual(
       NR.parseSettings(null),
-      { doublePage: false, coverAlone: true, detectSpreads: true },
+      defaults,
       "a browser that has never been asked gets the defaults — the mode off"
     );
     assert.deepStrictEqual(
       NR.parseSettings('{"doublePage":true}'),
-      { doublePage: true, coverAlone: true, detectSpreads: true },
+      { ...defaults, doublePage: true },
       "a stored object may be missing a field: the rest are defaults"
     );
     assert.deepStrictEqual(
       NR.parseSettings('{"doublePage":"yes"}'),
-      { doublePage: false, coverAlone: true, detectSpreads: true },
+      defaults,
       "and a value of the wrong type is not a setting"
     );
     assert.deepStrictEqual(
       NR.parseSettings("not json"),
-      { doublePage: false, coverAlone: true, detectSpreads: true },
+      defaults,
       "nor is something else's value under our key"
     );
+
+    // The fade is the one setting that is a number, and it ends up as a duration in
+    // a Web Animation: something that is not a finite number of milliseconds would
+    // be a screen that never arrives, so it is checked rather than trusted.
+    const fade = (raw) => NR.parseSettings(raw).fadeMs;
+    assert.strictEqual(fade('{"fadeMs":250}'), 250, "a number is a setting");
+    assert.strictEqual(
+      fade('{"fadeMs":0}'),
+      0,
+      "and 0 is one — no fade at all"
+    );
+    assert.strictEqual(
+      fade('{"fadeMs":-40}'),
+      0,
+      "a negative one is clamped, not obeyed"
+    );
+    assert.strictEqual(
+      fade('{"fadeMs":99999}'),
+      NR.FADE_MAX_MS,
+      "and an absurd one is capped at what the slider offers"
+    );
+    assert.strictEqual(
+      fade('{"fadeMs":"140"}'),
+      140,
+      "a string is not a number"
+    );
+    assert.strictEqual(fade('{"fadeMs":null}'), 140, "nor is null");
   });
 
   await runSection("the lightbox header is read as a position", () => {
@@ -1149,6 +1183,72 @@ async function main() {
     stopReader(box);
   });
 
+  await runSection(
+    "the fade is a setting, in the menu beside the switch",
+    async () => {
+      const { box, popover } = await startReader({ galleryId: "8", on: true });
+
+      const fade = popover.querySelector("#manga-reader-fade");
+      assert.ok(fade, "the options menu offers the fade length as a slider");
+      assert.strictEqual(
+        fade.type,
+        "range",
+        "a range, so it can be found by dragging"
+      );
+      assert.strictEqual(
+        fade.max,
+        "1000",
+        "and it reaches somewhere unmistakable"
+      );
+      assert.strictEqual(fade.value, "140", "starting where the default is");
+      // The value is shown beside the label — the readout inside the label is where
+      // the number lives, so it is readable from the menu without a render.
+      assert.strictEqual(
+        fade.parentNode.children[0].children[0].textContent,
+        "140 ms",
+        "and showing what it is set to"
+      );
+
+      // Dragging it changes what the next screen does, which is the only way to tell
+      // that this setting is connected to anything.
+      const before = container().animations.length;
+      fade.value = "600";
+      fade.dispatch("input");
+      box.move(2);
+      dom.flush();
+
+      const animations = container().animations;
+      assert.strictEqual(
+        animations.length,
+        before + 1,
+        "a turn after the drag still fades"
+      );
+      assert.strictEqual(
+        animations[animations.length - 1].options.duration,
+        600,
+        "…for as long as the slider says"
+      );
+
+      // Zero is a setting too, and it means what it says: the screen arrives at once.
+      fade.value = "0";
+      fade.dispatch("input");
+      box.move(4);
+      dom.flush();
+      assert.strictEqual(
+        container().animations.length,
+        before + 1,
+        "and 0 draws the screen with no animation at all"
+      );
+
+      // Put back: the setting is remembered across sections, and one left at 0 would
+      // be changing what every section after this one reads.
+      fade.value = "140";
+      fade.dispatch("input");
+
+      stopReader(box);
+    }
+  );
+
   await runSection("the offset key re-pairs the gallery", async () => {
     const { box, popover } = await startReader({ galleryId: "8", on: true });
 
@@ -1313,7 +1413,7 @@ async function main() {
 
     assert.deepStrictEqual(
       JSON.parse(dom.window.localStorage.getItem("mangaReader.settings")),
-      { doublePage: true, coverAlone: true, detectSpreads: true },
+      { doublePage: true, coverAlone: true, detectSpreads: true, fadeMs: 140 },
       "the switch writes the setting it changed and leaves the rest alone"
     );
 
